@@ -17,9 +17,9 @@ import AppFooter from './components/AppFooter';
 
 const App: React.FC = () => {
   const [selectedKey, setSelectedKey] = useState<NoteValue>('A');
-  const [selectedScale, setSelectedScale] = useState<string>('major');
-  const [selectedChordKey, setSelectedChordKey] = useState<string>('');
-  const [mode, setMode] = useState<Mode>('scale');
+  const [selectedScale, setSelectedScale] = useState<string>('major'); 
+  const [selectedChordKey, setSelectedChordKey] = useState<string>(''); 
+  const [mode, setMode] = useState<Mode>('scale'); 
   const [colorTheme, setColorTheme] = useState<ColorThemeOption>('standard');
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
     if (typeof window !== 'undefined') {
@@ -29,13 +29,9 @@ const App: React.FC = () => {
     return 'light';
   });
 
-  const [selectedPicks, setSelectedPicks] = useState<PickData[]>([]); // This can remain mutable as it's actively modified
-  const [identifiedChords, setIdentifiedChords] = useState<IdentifiedChord[]>([]); // Mutable
-  const [potentialChords, setPotentialChords] = useState<PotentialChordSuggestion[]>([]); // Mutable
-
-  // This state is derived from `potentialChords` which is mutable,
-  // but if it's passed to a component expecting readonly, its type should reflect that.
-  // For now, if Fretboard expects readonly, this should be readonly.
+  const [selectedPicks, setSelectedPicks] = useState<PickData[]>([]);
+  const [identifiedChords, setIdentifiedChords] = useState<IdentifiedChord[]>([]);
+  const [potentialChords, setPotentialChords] = useState<PotentialChordSuggestion[]>([]);
   const [suggestedNotesForDisplay, setSuggestedNotesForDisplay] = useState<readonly NoteValue[]>([]);
 
 
@@ -57,21 +53,39 @@ const App: React.FC = () => {
 
   const setAppMode = (newMode: Mode) => {
     setMode(newMode);
-    if (newMode !== 'scale') setSelectedScale('');
-    if (newMode !== 'chord') setSelectedChordKey('');
-    if (newMode !== 'pick') {
+
+    if (newMode === 'scale') {
+      // If selectedScale is empty or wasn't a valid scale (e.g. after switching from pick/chord), default it.
+      // This ensures that upon entering 'scale' mode, a scale is always active,
+      // but preserves existing valid scale if switching back to scale mode.
+      if (!selectedScale || !SCALES[selectedScale as keyof ScalesData]) {
+          setSelectedScale('major');
+      }
+      setSelectedChordKey(''); 
       setSelectedPicks([]);
       setIdentifiedChords([]);
       setPotentialChords([]);
       setSuggestedNotesForDisplay([]);
+    } else if (newMode === 'chord') {
+      setSelectedChordKey('major'); // Always default to 'major' when entering 'chord' mode
+      setSelectedScale(''); 
+      setSelectedPicks([]);
+      setIdentifiedChords([]);
+      setPotentialChords([]);
+      setSuggestedNotesForDisplay([]);
+    } else if (newMode === 'pick') {
+      setSelectedScale(''); 
+      setSelectedChordKey(''); 
+      // Pick mode states are managed by user interactions
     }
-    if (newMode === 'scale' && !selectedScale) setSelectedScale('major');
-    if (!selectedKey) setSelectedKey('A');
+
+    if (!selectedKey || !NOTES.includes(selectedKey)) {
+      setSelectedKey('A');
+    }
   };
 
-  // getNotesInKey returns NoteValue[], which is mutable.
-  // If SelectionInfo or Fretboard expect readonly, this needs to be cast or its type updated.
-  const currentModeNotes: readonly NoteValue[] = useMemo(() => { // <--- Make readonly
+
+  const currentModeNotes: readonly NoteValue[] = useMemo(() => {
     if (!selectedKey || !NOTES.includes(selectedKey)) return [];
     if (mode === 'scale' && selectedScale && SCALES[selectedScale as keyof ScalesData]) {
       return getNotesInKey(selectedKey, SCALES[selectedScale as keyof ScalesData].intervals);
@@ -101,7 +115,7 @@ const App: React.FC = () => {
   }, [mode, identifiedChords]);
 
 
-  const pickedUniqueNotes: readonly NoteValue[] = useMemo(() => { // <--- Make readonly
+  const pickedUniqueNotes: readonly NoteValue[] = useMemo(() => {
     const uniqueNotesMap = new Map<NoteValue, PickData>();
     selectedPicks.forEach(pick => {
       if (!uniqueNotesMap.has(pick.note) || pick.absolutePitch < (uniqueNotesMap.get(pick.note) as PickData).absolutePitch) {
@@ -114,14 +128,29 @@ const App: React.FC = () => {
   }, [selectedPicks]);
 
   const handleKeyChange = (value: string) => { if (value) setSelectedKey(value as NoteValue); };
+  
   const handleScaleChange = (value: string) => {
-    if (value) { setSelectedScale(value); setMode('scale'); setSelectedChordKey(''); setSelectedPicks([]); }
-    else { setSelectedScale(''); }
+    // This handler is called when the scale dropdown value changes.
+    // It assumes the app is already in 'scale' mode (Controls disables dropdown otherwise).
+    // So, just update the selected scale.
+    if (value) {
+        setSelectedScale(value);
+    } else {
+        setSelectedScale(''); // Allow deselecting if Select component supports it
+    }
   };
+  
   const handleChordChange = (value: string) => {
-    if (value) { setSelectedChordKey(value); setMode('chord'); setSelectedScale(''); setSelectedPicks([]); }
-    else { setSelectedChordKey(''); }
+    // This handler is called when the chord dropdown value changes.
+    // It assumes the app is already in 'chord' mode (Controls disables dropdown otherwise).
+    // So, just update the selected chord.
+    if (value) {
+        setSelectedChordKey(value);
+    } else {
+        setSelectedChordKey(''); // Allow deselecting if Select component supports it
+    }
   };
+
   const handleThemeToggle = (isChecked: boolean) => { setColorTheme(isChecked ? 'uniqueNotes' : 'standard'); };
   const handleClearPicks = () => { setSelectedPicks([]); };
 
@@ -148,16 +177,20 @@ const App: React.FC = () => {
       const potential = findPotentialChordsUpdated(currentUniqueNoteNames, currentChordsNamesSet);
       setPotentialChords(potential);
       
-      // This assignment is okay because map returns a new (mutable) array.
-      // If setSuggestedNotesForDisplay expected readonly, this would be fine.
       const notesToSuggest: NoteValue[] = [...new Set(potential.map(s => s.noteToAdd))];
-      setSuggestedNotesForDisplay(notesToSuggest); // Assigning NoteValue[] to readonly NoteValue[] is fine
-    } else {
-      setIdentifiedChords([]);
-      setPotentialChords([]);
-      setSuggestedNotesForDisplay([]);
+      setSuggestedNotesForDisplay(notesToSuggest);
     }
   }, [selectedPicks, mode]);
+
+  const highlightedNotesForFretboard = useMemo(() => {
+    if (mode === 'pick') {
+      if (selectedPicks.length <= 1) {
+        return NOTES; 
+      }
+      return []; 
+    }
+    return currentModeNotes; 
+  }, [mode, selectedPicks.length, currentModeNotes]);
 
   return (
     <div className="container mx-auto p-4 font-sans text-gray-900 dark:text-gray-100 min-h-screen">
@@ -180,27 +213,28 @@ const App: React.FC = () => {
       <SelectionInfo
         mode={mode}
         currentSelectionName={currentSelectionName}
-        pickedUniqueNotes={pickedUniqueNotes} // This is now readonly NoteValue[]
-        currentModeNotes={currentModeNotes}   // This is now readonly NoteValue[]
+        pickedUniqueNotes={pickedUniqueNotes}
+        currentModeNotes={currentModeNotes}
         selectedChordKey={selectedChordKey}
         colorTheme={colorTheme}
         identifiedChordsQuality={identifiedChordsQuality}
       />
       <Fretboard
-        tuning={STANDARD_TUNING} // STANDARD_TUNING is readonly, Fretboard prop 'tuning' is now readonly
+        tuning={STANDARD_TUNING}
         numFrets={NUM_FRETS}
-        highlightedNotes={currentModeNotes} // currentModeNotes is readonly, Fretboard prop is readonly
+        highlightedNotes={highlightedNotesForFretboard}
         rootNote={mode === 'pick' ? null : selectedKey}
-        selectedPicks={selectedPicks} // selectedPicks is mutable, Fretboard prop is readonly. This is fine.
+        selectedPicks={selectedPicks}
+        selectedPicksCount={selectedPicks.length}
         mode={mode}
         colorTheme={mode === 'pick' ? 'uniqueNotes' : colorTheme}
         onFretClick={handleFretClick}
-        suggestedNotesForDisplay={suggestedNotesForDisplay} // suggestedNotesForDisplay is readonly, Fretboard prop is readonly
+        suggestedNotesForDisplay={selectedPicks.length > 1 ? suggestedNotesForDisplay : []}
       />
       {mode === 'pick' && (
         <PickModeAnalysis
-          selectedPicks={selectedPicks} // selectedPicks is mutable, PickModeAnalysis prop can be mutable or readonly
-          potentialChords={potentialChords} // potentialChords is mutable, PickModeAnalysis prop can be mutable or readonly
+          selectedPicks={selectedPicks}
+          potentialChords={potentialChords}
           onClearPicks={handleClearPicks}
         />
       )}

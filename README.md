@@ -1,0 +1,2 @@
+- fix fretboard "tail" and center
+- change the URL to deeplink the note and chord we are on

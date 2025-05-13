@@ -3,19 +3,21 @@ import GuitarString from './GuitarString';
 import { NoteValue, Mode, ColorThemeOption, PickData } from '../types';
 
 interface FretboardProps {
-  tuning: readonly NoteValue[]; // <--- Change here: NoteValue[] to readonly NoteValue[]
+  tuning: readonly NoteValue[];
   numFrets: number;
-  highlightedNotes?: readonly NoteValue[]; // Also make this readonly for consistency
+  highlightedNotes?: readonly NoteValue[];
   rootNote?: NoteValue | null;
-  selectedPicks?: readonly PickData[]; // And this
+  selectedPicks?: readonly PickData[];
+  selectedPicksCount?: number; // New prop
   mode: Mode;
   colorTheme: ColorThemeOption;
   onFretClick?: (pickData: PickData) => void;
-  suggestedNotesForDisplay?: readonly NoteValue[]; // And this
+  suggestedNotesForDisplay?: readonly NoteValue[];
 }
 
 const Fretboard: React.FC<FretboardProps> = ({
   tuning, numFrets, highlightedNotes = [], rootNote = null, selectedPicks = [],
+  selectedPicksCount, // Destructure new prop
   mode, colorTheme, onFretClick, suggestedNotesForDisplay
 }) => {
   const fretMarkers = [3, 5, 7, 9, 12];
@@ -44,15 +46,16 @@ const Fretboard: React.FC<FretboardProps> = ({
         })}
       </div>
       {/* Guitar Strings */}
-      {tuning.map((openNote, stringIndex) => ( // .map is fine on readonly arrays
+      {tuning.map((openNote, stringIndex) => (
         <GuitarString
           key={`string-${stringIndex}-${openNote}`}
           stringIndex={stringIndex}
-          openNote={openNote} // openNote is a NoteValue, not an array
+          openNote={openNote}
           numFrets={numFrets}
           highlightedNotes={highlightedNotes}
           rootNote={rootNote}
           selectedPicks={selectedPicks}
+          selectedPicksCount={selectedPicksCount} // Pass down
           mode={mode}
           colorTheme={colorTheme}
           onFretClick={onFretClick}

@@ -7,34 +7,55 @@ interface GuitarStringProps {
   stringIndex: number;
   openNote: NoteValue;
   numFrets: number;
-  highlightedNotes: readonly NoteValue[]; // <--- Change here
+  highlightedNotes: readonly NoteValue[];
   rootNote: NoteValue | null;
-  selectedPicks: readonly PickData[];   // <--- Change here
+  selectedPicks: readonly PickData[];
+  selectedPicksCount?: number; // New prop
   mode: Mode;
   colorTheme: ColorThemeOption;
   onFretClick?: (pickData: PickData) => void;
-  suggestedNotes?: readonly NoteValue[]; // <--- Change here
+  suggestedNotes?: readonly NoteValue[];
 }
 
 const GuitarString: React.FC<GuitarStringProps> = ({
   stringIndex, openNote, numFrets, highlightedNotes, rootNote,
-  selectedPicks, mode, colorTheme, onFretClick, suggestedNotes
+  selectedPicks, selectedPicksCount, // Destructure new prop
+  mode, colorTheme, onFretClick, suggestedNotes
 }) => {
   const frets = [];
+
+  const isFretHighlighted = (currentNote: NoteValue): boolean => {
+    if (mode === 'pick') {
+      // When selectedPicksCount <= 1, App.tsx passes all NOTES as highlightedNotes.
+      // So, if highlightedNotes includes currentNote, it means it should be shown.
+      if (typeof selectedPicksCount === 'number' && selectedPicksCount <= 1) {
+        return highlightedNotes.includes(currentNote);
+      }
+      // Otherwise (selectedPicksCount > 1), standard highlighting doesn't apply for pick mode base notes;
+      // selected and suggested notes are handled separately.
+      return false;
+    }
+    // For scale/chord mode
+    return highlightedNotes.includes(currentNote);
+  };
+
+
   for (let i = 0; i <= numFrets; i++) {
     const noteDetails = getNoteDetailsAtFret(stringIndex, i);
     if (!noteDetails) continue;
     const note = noteDetails.note;
 
     const isSelected = mode === 'pick' && selectedPicks.some(p => p.stringIndex === stringIndex && p.fretIndex === i);
-    // .includes() is fine on readonly arrays
-    const isHighlighted = mode !== 'pick' && highlightedNotes.includes(note);
+    const fretIsHighlightedStatus = isFretHighlighted(note);
     const isRoot = mode !== 'pick' && note === rootNote;
 
     frets.push(
       <Fret
         key={`${openNote}-${i}`} stringIndex={stringIndex} fretIndex={i} note={note}
-        isHighlighted={isHighlighted} isRoot={isRoot} isSelected={isSelected}
+        isHighlighted={fretIsHighlightedStatus} 
+        isRoot={isRoot} 
+        isSelected={isSelected}
+        selectedPicksCount={selectedPicksCount} // Pass down
         mode={mode} colorTheme={colorTheme} isOpenString={i === 0} onFretClick={onFretClick}
         suggestedNotes={suggestedNotes}
       />
