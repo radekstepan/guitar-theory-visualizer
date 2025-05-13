@@ -1,6 +1,7 @@
 import React from 'react';
 import GuitarString from './GuitarString';
 import { NoteValue, Mode, ColorThemeOption, PickData } from '../types';
+import { cn } from './ui'; // Import cn for conditional classes if needed
 
 interface FretboardProps {
   tuning: readonly NoteValue[];
@@ -8,7 +9,7 @@ interface FretboardProps {
   highlightedNotes?: readonly NoteValue[];
   rootNote?: NoteValue | null;
   selectedPicks?: readonly PickData[];
-  selectedPicksCount?: number; // New prop
+  selectedPicksCount?: number; 
   mode: Mode;
   colorTheme: ColorThemeOption;
   onFretClick?: (pickData: PickData) => void;
@@ -17,7 +18,7 @@ interface FretboardProps {
 
 const Fretboard: React.FC<FretboardProps> = ({
   tuning, numFrets, highlightedNotes = [], rootNote = null, selectedPicks = [],
-  selectedPicksCount, // Destructure new prop
+  selectedPicksCount, 
   mode, colorTheme, onFretClick, suggestedNotesForDisplay
 }) => {
   const fretMarkers = [3, 5, 7, 9, 12];
@@ -26,7 +27,16 @@ const Fretboard: React.FC<FretboardProps> = ({
   if (numFrets >= 12) markerPositions[12] = 'double';
 
   return (
-    <div className="fretboard-container bg-gray-200 dark:bg-gray-700 p-4 rounded-lg shadow-lg overflow-x-auto">
+    // Changed to inline-flex to shrink-wrap content width.
+    // overflow-x-auto allows horizontal scrolling if content is wider than this container.
+    // The parent div in App.tsx with `flex justify-center` will center this inline-flex container.
+    <div 
+      className={cn(
+        "fretboard-container bg-gray-200 dark:bg-gray-700 p-4 rounded-lg shadow-lg",
+        "inline-flex flex-col", // Makes it shrink to content width and lay out children vertically
+        "overflow-x-auto" // Allows horizontal scroll if fretboard is very wide
+      )}
+    >
       {/* Fret Numbers Row */}
       <div className="flex items-center mb-1">
         <div className="w-12 h-4"></div> {/* Placeholder for open string area */}
@@ -55,7 +65,7 @@ const Fretboard: React.FC<FretboardProps> = ({
           highlightedNotes={highlightedNotes}
           rootNote={rootNote}
           selectedPicks={selectedPicks}
-          selectedPicksCount={selectedPicksCount} // Pass down
+          selectedPicksCount={selectedPicksCount} 
           mode={mode}
           colorTheme={colorTheme}
           onFretClick={onFretClick}
