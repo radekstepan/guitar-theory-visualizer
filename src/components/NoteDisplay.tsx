@@ -1,7 +1,7 @@
 import React from 'react';
 import { NoteValue } from '../types';
 import { UNIQUE_NOTE_COLORS, UNIQUE_NOTE_TEXT_COLORS, COMMON_NOTE_TEXT_STYLE } from '../constants';
-import { cn } from './ui';
+import { cn } from '../utils/utils'; // Updated import
 
 interface NoteDisplayProps {
   note: NoteValue;

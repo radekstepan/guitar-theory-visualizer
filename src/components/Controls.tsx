@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, CardHeader, CardTitle, CardContent, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui';
+import { Card, CardHeader, CardTitle, CardContent, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui'; // Updated import
 import { NoteValue, Mode, ScalesData, ChordsData } from '../types';
 import { NOTES, SCALES, CHORDS } from '../constants';
 
@@ -19,9 +19,6 @@ const Controls: React.FC<ControlsProps> = ({
   if (mode === 'pick') return null;
 
   const getChordDisplayLabel = (key: string, chordDef: typeof CHORDS[string]): string => {
-    // if (key === 'major') return 'Major'; // Explicit display for "major" key
-    // For minorMajor7, CHORDS.minorMajor7.name is "mM7", which is fine for display
-    // For other chords, chordDef.name is their suffix.
     return chordDef.name || chordDef.quality.split(',')[0] || key.charAt(0).toUpperCase() + key.slice(1);
   };
 

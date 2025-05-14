@@ -1,7 +1,7 @@
 import React from 'react';
 import GuitarString from './GuitarString';
 import { NoteValue, Mode, ColorThemeOption, PickData } from '../types';
-import { cn } from './ui'; // Import cn for conditional classes if needed
+import { cn } from '../utils/utils'; // Updated import
 
 interface FretboardProps {
   tuning: readonly NoteValue[];
@@ -27,24 +27,19 @@ const Fretboard: React.FC<FretboardProps> = ({
   if (numFrets >= 12) markerPositions[12] = 'double';
 
   return (
-    // Changed to inline-flex to shrink-wrap content width.
-    // overflow-x-auto allows horizontal scrolling if content is wider than this container.
-    // The parent div in App.tsx with `flex justify-center` will center this inline-flex container.
     <div 
       className={cn(
         "fretboard-container bg-gray-200 dark:bg-gray-700 p-4 rounded-lg shadow-lg",
-        "inline-flex flex-col", // Makes it shrink to content width and lay out children vertically
-        "overflow-x-auto" // Allows horizontal scroll if fretboard is very wide
+        "inline-flex flex-col", 
+        "overflow-x-auto" 
       )}
     >
-      {/* Fret Numbers Row */}
       <div className="flex items-center mb-1">
-        <div className="w-12 h-4"></div> {/* Placeholder for open string area */}
+        <div className="w-12 h-4"></div> 
         {[...Array(numFrets)].map((_, i) => {
           const fretNumber = i + 1;
           return (
             <div key={`fret-num-${fretNumber}`} className="fret-number w-16 h-4 text-center text-xs text-gray-600 dark:text-gray-300 relative">
-              {/* Fret markers are now positioned above the number's container */}
               {markerPositions[fretNumber] && (
                 <div className={`absolute left-1/2 transform -translate-x-1/2 bottom-5 flex ${markerPositions[fretNumber] === 'double' ? 'space-x-1' : ''}`}>
                   <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full"></div>
@@ -56,7 +51,6 @@ const Fretboard: React.FC<FretboardProps> = ({
           );
         })}
       </div>
-      {/* Guitar Strings */}
       {tuning.map((openNote, stringIndex) => (
         <GuitarString
           key={`string-${stringIndex}-${openNote}`}

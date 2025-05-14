@@ -2,16 +2,16 @@ import React from 'react';
 import { NoteValue, Mode, ColorThemeOption, PickData } from '../types';
 import { UNIQUE_NOTE_COLORS, UNIQUE_NOTE_TEXT_COLORS, COMMON_NOTE_TEXT_STYLE, SELECTED_FRET_CELL_BG, NOTES } from '../constants';
 import { getNoteDetailsAtFret } from '../utils/chordFinder';
-import { cn } from './ui';
+import { cn } from '../utils/utils'; // Updated import
 
 interface FretProps {
   stringIndex: number;
   fretIndex: number;
   note: NoteValue;
-  isHighlighted: boolean; // This now correctly reflects if the note should be shown in "pick mode show all"
+  isHighlighted: boolean; 
   isRoot: boolean;
   isSelected: boolean;
-  selectedPicksCount?: number; // New prop
+  selectedPicksCount?: number; 
   mode: Mode;
   colorTheme: ColorThemeOption;
   isOpenString: boolean;
@@ -21,7 +21,7 @@ interface FretProps {
 
 const Fret: React.FC<FretProps> = ({
   stringIndex, fretIndex, note, isHighlighted, isRoot, isSelected,
-  selectedPicksCount, // Destructure
+  selectedPicksCount, 
   mode, colorTheme, isOpenString, onFretClick, suggestedNotes
 }) => {
   const isPickModeShowAllInitial = mode === 'pick' && typeof selectedPicksCount === 'number' && selectedPicksCount <= 1;
@@ -37,43 +37,39 @@ const Fret: React.FC<FretProps> = ({
   let cursorClass = '';
   let markerOpacityClass = '';
 
-  // Determine if a marker should be shown
   const showMarker = 
-    (mode === 'pick' && isSelected) || // Always show selected notes
-    (mode === 'pick' && !isSelected && !isPickModeShowAllInitial && suggestedNotes?.includes(note)) || // Show suggested if not selected and not in "show all" mode
-    (isPickModeShowAllInitial && isHighlighted) || // Show if in "show all" mode and this fret is highlighted (i.e., its note is one of the 12)
-    (mode !== 'pick' && isHighlighted); // Standard highlighting for scale/chord
+    (mode === 'pick' && isSelected) || 
+    (mode === 'pick' && !isSelected && !isPickModeShowAllInitial && suggestedNotes?.includes(note)) || 
+    (isPickModeShowAllInitial && isHighlighted) || 
+    (mode !== 'pick' && isHighlighted); 
 
-  if (mode === 'pick' && isSelected) { // Style for selected notes (takes precedence)
+  if (mode === 'pick' && isSelected) { 
     fretCellBgClass = SELECTED_FRET_CELL_BG;
     noteMarkerBgColor = UNIQUE_NOTE_COLORS[note] || 'bg-gray-400';
     noteMarkerTextColor = `${UNIQUE_NOTE_TEXT_COLORS[note] || 'text-white'} ${COMMON_NOTE_TEXT_STYLE}`;
-  } else if (showMarker) { // Style for other types of markers
+  } else if (showMarker) { 
     noteMarkerTextColor = `${UNIQUE_NOTE_TEXT_COLORS[note] || 'text-white'} ${COMMON_NOTE_TEXT_STYLE}`;
-    noteMarkerBgColor = UNIQUE_NOTE_COLORS[note] || 'bg-gray-400'; // Default to unique colors for pick mode / unique theme
+    noteMarkerBgColor = UNIQUE_NOTE_COLORS[note] || 'bg-gray-400'; 
 
     if (mode === 'pick') {
       if (isPickModeShowAllInitial && isHighlighted) {
-        // "Show all notes" state: full opacity, unique color.
-        // Colors are already set above. Opacity is default (full).
         markerOpacityClass = ''; 
-      } else if (!isSelected && suggestedNotes?.includes(note)) { // This is for suggested notes when > 1 pick
+      } else if (!isSelected && suggestedNotes?.includes(note)) { 
         markerOpacityClass = 'opacity-60';
       }
-    } else { // Scale or Chord mode highlighting
+    } else { 
       if (colorTheme === 'standard') {
         noteMarkerBgColor = isRoot ? 'bg-blue-500 dark:bg-blue-400' : 'bg-green-500 dark:bg-green-400';
         noteMarkerTextColor = `text-white dark:text-gray-900 ${COMMON_NOTE_TEXT_STYLE}`;
         if (isRoot) ringColor = 'ring-2 ring-offset-1 ring-offset-gray-100 dark:ring-offset-gray-800 ring-blue-600 dark:ring-blue-500';
-      } else { // Unique note colors for scale/chord
-        // noteMarkerBgColor already set to unique.
+      } else { 
         if (isRoot) ringColor = 'ring-2 ring-offset-1 ring-offset-gray-100 dark:ring-offset-gray-800 ring-black dark:ring-white';
       }
     }
   }
 
   if (mode === 'pick') {
-    cursorClass = 'cursor-pointer hover:bg-opacity-0';
+    cursorClass = 'cursor-pointer hover:bg-opacity-80';
   }
 
   const handleClick = () => {

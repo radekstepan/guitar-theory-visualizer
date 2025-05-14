@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
-// ... (imports remain the same)
 import {
   NoteValue, Mode, ColorThemeOption, ThemeMode, PickData, IdentifiedChord, PotentialChordSuggestion,
   ScalesData, ChordsData
@@ -18,13 +17,11 @@ import {
 import AppHeader from './components/AppHeader';
 import ModeSelection from './components/ModeSelection';
 import Controls from './components/Controls';
-import ColorThemeToggle from './components/ColorThemeToggle';
 import SelectionInfo from './components/SelectionInfo';
 import Fretboard from './components/Fretboard';
 import PickModeAnalysis from './components/PickModeAnalysis';
 
 const App: React.FC = () => {
-  // ... (useState, useEffects for URL and theme remain the same as your last working version)
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [mode, setInternalMode] = useState<Mode>(() => {
@@ -70,7 +67,8 @@ const App: React.FC = () => {
     return initialPicks;
   });
 
-  const [colorTheme, setColorTheme] = useState<ColorThemeOption>('standard');
+  const [colorTheme, setColorTheme] = useState<ColorThemeOption>('uniqueNotes'); 
+  
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
     const storedTheme = typeof window !== 'undefined' ? localStorage.getItem('theme') : null;
     return (storedTheme === 'light' || storedTheme === 'dark') ? storedTheme : 'light';
@@ -87,10 +85,13 @@ const App: React.FC = () => {
     const scaleParam = searchParams.get('scale')?.trim(); 
     const chordParam = searchParams.get('chord')?.trim(); 
     const picksParam = searchParams.get('picks');
+
     const newMode = modeParam || 'scale';
     if (mode !== newMode) setInternalMode(newMode);
+
     const newKey = (keyParam && NOTES.includes(keyParam)) ? keyParam : 'A';
     if (selectedKey !== newKey) setInternalSelectedKey(newKey);
+
     if (newMode === 'scale') {
       const newScale = (scaleParam && SCALES[scaleParam as keyof ScalesData]) ? scaleParam : 'major';
       if (selectedScale !== newScale) setInternalSelectedScale(newScale);
@@ -142,6 +143,7 @@ const App: React.FC = () => {
         newParams.delete('picks');
       }
     }
+
     const currentParamsString = searchParams.toString();
     const newParamsString = newParams.toString();
     if (newParamsString !== currentParamsString) {
@@ -157,6 +159,12 @@ const App: React.FC = () => {
   }, [themeMode]);
 
   const toggleThemeMode = () => setThemeMode(prev => (prev === 'light' ? 'dark' : 'light'));
+  
+  const handleColorThemeChange = (newTheme: ColorThemeOption) => {
+    if (mode !== 'pick') { 
+      setColorTheme(newTheme);
+    }
+  };
 
   const handleModeChange = useCallback((newMode: Mode) => {
     const prevMode = mode;
@@ -196,34 +204,41 @@ const App: React.FC = () => {
     }
     if (mode === 'chord' && cleanSelectedChordKey && CHORDS[cleanSelectedChordKey as keyof ChordsData]) {
       const chordData = CHORDS[cleanSelectedChordKey as keyof ChordsData];
-      // Now CHORDS.major.name is "M", so this will display "CM", "AM", etc.
-      // This is consistent with Tonal's symbols.
       return `${currentKeyDisplay}${chordData.name}`; 
     }
     if (mode === 'pick') {
-      // identifiedChords[].name comes from findMatchingChordsVoicing, 
-      // which now uses CHORDS.major.name = "M", so it will be e.g. "CM".
       const chordsText = identifiedChords.map(c => c.name).join(' / ');
       return `Pick Mode Active ${chordsText ? `- ${chordsText}` : ''}`;
     }
     return 'Select Mode/Key/Scale/Chord';
   }, [selectedKey, selectedScale, selectedChordKey, mode, identifiedChords]);
   
-  // ... (rest of App.tsx remains the same as your last working version)
   const identifiedChordsQuality = useMemo(() => { if (mode === 'pick' && identifiedChords.length > 0) { return identifiedChords[0].quality; } return null; }, [mode, identifiedChords]);
   const pickedUniqueNotes: readonly NoteValue[] = useMemo(() => { const uniqueNotesMap = new Map<NoteValue, PickData>(); selectedPicks.forEach(pick => { if (!uniqueNotesMap.has(pick.note) || pick.absolutePitch < (uniqueNotesMap.get(pick.note) as PickData).absolutePitch) { uniqueNotesMap.set(pick.note, pick); } }); return [...uniqueNotesMap.values()] .sort((a, b) => NOTES.indexOf(a.note) - NOTES.indexOf(b.note)) .map(pick => pick.note); }, [selectedPicks]);
   const handleKeyChange = (value: string) => { const trimmedValue = value.trim() as NoteValue; if (NOTES.includes(trimmedValue)) setInternalSelectedKey(trimmedValue); };
   const handleScaleChange = (value: string) => { const trimmedValue = value.trim(); if (SCALES[trimmedValue as keyof ScalesData]) { setInternalSelectedScale(trimmedValue); } };
   const handleChordChange = (value: string) => { const trimmedValue = value.trim(); if (CHORDS[trimmedValue as keyof ChordsData]) { setInternalSelectedChordKey(trimmedValue); } };
-  const handleThemeToggle = (isChecked: boolean) => setColorTheme(isChecked ? 'uniqueNotes' : 'standard');
+  
   const handleClearPicks = () => setInternalSelectedPicks([]);
   const handleFretClick = useCallback((pickDataWithDetails: PickData) => { if (mode !== 'pick') return; setInternalSelectedPicks(prevPicks => { const existingPickIndex = prevPicks.findIndex(p => p.stringIndex === pickDataWithDetails.stringIndex && p.fretIndex === pickDataWithDetails.fretIndex); if (existingPickIndex > -1) { return prevPicks.filter((_, index) => index !== existingPickIndex); } else { return [...prevPicks, pickDataWithDetails]; } }); }, [mode]);
+  
   useEffect(() => { if (mode === 'pick') { const currentChordsObjects = findMatchingChordsVoicing(selectedPicks); const currentChordsNamesSet = new Set(currentChordsObjects.map(c => c.name)); setIdentifiedChords(currentChordsObjects); const potential = findPotentialChordsUpdated(pickedUniqueNotes, currentChordsNamesSet); setPotentialChords(potential); setSuggestedNotesForDisplay([...new Set(potential.map(s => s.noteToAdd))]); } else { setIdentifiedChords([]); setPotentialChords([]); setSuggestedNotesForDisplay([]); } }, [selectedPicks, mode, pickedUniqueNotes]);
+  
   const highlightedNotesForFretboard = useMemo(() => { if (mode === 'pick') { if (selectedPicks.length <= 1) return NOTES; return []; } return currentModeNotes; }, [mode, selectedPicks.length, currentModeNotes]);
+
+  const effectiveColorTheme = useMemo(() => {
+    return mode === 'pick' ? 'uniqueNotes' : colorTheme;
+  }, [mode, colorTheme]);
 
   return (
     <div className="container mx-auto p-4 font-sans text-gray-900 dark:text-gray-100 min-h-screen">
-      <AppHeader themeMode={themeMode} toggleThemeMode={toggleThemeMode} />
+      <AppHeader 
+        themeMode={themeMode} 
+        toggleThemeMode={toggleThemeMode}
+        colorTheme={colorTheme} 
+        onColorThemeChange={handleColorThemeChange} 
+        currentAppMode={mode} 
+      />
       <ModeSelection currentMode={mode} onSetMode={handleModeChange} />
       <Controls
         mode={mode}
@@ -234,14 +249,13 @@ const App: React.FC = () => {
         selectedChordKey={selectedChordKey.trim()}
         onChordChange={handleChordChange}
       />
-      <ColorThemeToggle colorTheme={colorTheme} onThemeToggle={handleThemeToggle} mode={mode} />
       <SelectionInfo
         mode={mode}
         currentSelectionName={currentSelectionName}
         pickedUniqueNotes={pickedUniqueNotes}
         currentModeNotes={currentModeNotes}
         selectedChordKey={selectedChordKey.trim()}
-        colorTheme={colorTheme}
+        colorTheme={effectiveColorTheme} 
         identifiedChordsQuality={identifiedChordsQuality}
       />
       <div className="flex justify-center my-4">
@@ -253,7 +267,7 @@ const App: React.FC = () => {
           selectedPicks={selectedPicks}
           selectedPicksCount={selectedPicks.length}
           mode={mode}
-          colorTheme={mode === 'pick' ? 'uniqueNotes' : colorTheme}
+          colorTheme={effectiveColorTheme} 
           onFretClick={handleFretClick}
           suggestedNotesForDisplay={selectedPicks.length > 1 ? suggestedNotesForDisplay : []}
         />
