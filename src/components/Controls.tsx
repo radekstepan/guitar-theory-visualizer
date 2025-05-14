@@ -1,6 +1,6 @@
 import React from 'react';
 import { Card, CardHeader, CardTitle, CardContent, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui';
-import { NoteValue, Mode, ScalesData, ChordsData } from '../types'; // Ensure NoteValue is imported
+import { NoteValue, Mode, ScalesData, ChordsData } from '../types';
 import { NOTES, SCALES, CHORDS } from '../constants';
 
 interface ControlsProps {
@@ -18,9 +18,15 @@ const Controls: React.FC<ControlsProps> = ({
 }) => {
   if (mode === 'pick') return null;
 
+  const getChordDisplayLabel = (key: string, chordDef: typeof CHORDS[string]): string => {
+    // if (key === 'major') return 'Major'; // Explicit display for "major" key
+    // For minorMajor7, CHORDS.minorMajor7.name is "mM7", which is fine for display
+    // For other chords, chordDef.name is their suffix.
+    return chordDef.name || chordDef.quality.split(',')[0] || key.charAt(0).toUpperCase() + key.slice(1);
+  };
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-      {/* Key Selection */}
       <Card>
         <CardHeader><CardTitle>Root Note</CardTitle></CardHeader>
         <CardContent>
@@ -30,7 +36,6 @@ const Controls: React.FC<ControlsProps> = ({
           </Select>
         </CardContent>
       </Card>
-      {/* Scale Selection */}
       <Card className={`transition-opacity ${mode !== 'scale' ? 'opacity-50 cursor-not-allowed' : 'opacity-100'}`}>
         <CardHeader><CardTitle>Scale</CardTitle></CardHeader>
         <CardContent>
@@ -40,13 +45,18 @@ const Controls: React.FC<ControlsProps> = ({
           </Select>
         </CardContent>
       </Card>
-      {/* Chord Selection */}
       <Card className={`transition-opacity ${mode !== 'chord' ? 'opacity-50 cursor-not-allowed' : 'opacity-100'}`}>
         <CardHeader><CardTitle>Chord</CardTitle></CardHeader>
         <CardContent>
           <Select onValueChange={onChordChange} value={selectedChordKey} disabled={mode !== 'chord'}>
             <SelectTrigger className="w-full"><SelectValue placeholder="Select Chord" /></SelectTrigger>
-            <SelectContent>{Object.entries(CHORDS as ChordsData).map(([key, chord]) => (<SelectItem key={key} value={key}>{chord.name}</SelectItem>))}</SelectContent>
+            <SelectContent>
+              {Object.entries(CHORDS as ChordsData).map(([key, chordDef]) => (
+                <SelectItem key={key} value={key}>
+                  {getChordDisplayLabel(key, chordDef)}
+                </SelectItem>
+              ))}
+            </SelectContent>
           </Select>
         </CardContent>
       </Card>
