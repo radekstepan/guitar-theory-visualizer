@@ -10,29 +10,19 @@ const TUNING_MIDI_BASE: { readonly [key: number]: number } = {
 };
 
 // Helper constants for the new filtering logic in findPotentialChordsUpdated
-// Set of all chord name suffixes (e.g., "M", "m7", "dim") from APP_CHORDS
 const APP_CHORD_DEFINED_NAMES: Set<string> = new Set(Object.values(APP_CHORDS).map(def => def.name));
-// NOTES sorted by length descending, to correctly parse roots like "A#" before "A"
 const NOTES_SORTED_BY_LENGTH_DESC: readonly NoteValue[] = [...NOTES].sort((a, b) => b.length - a.length);
 
-// Helper function to check if a chord symbol string (e.g., "CM", "Am7")
-// corresponds to a chord definition in APP_CHORDS.
 export const isAppDefinedChordSymbol = (chordSymbol: string): boolean => {
     for (const note of NOTES_SORTED_BY_LENGTH_DESC) {
         if (chordSymbol.startsWith(note)) {
             const suffix = chordSymbol.substring(note.length);
-            // If the extracted suffix (e.g., "M" from "CM", "m7" from "Am7")
-            // is one of the 'name' properties in APP_CHORDS, it's a valid app-defined chord.
             if (APP_CHORD_DEFINED_NAMES.has(suffix)) {
                 return true;
             }
-            // If a root note is matched but the suffix isn't in APP_CHORD_DEFINED_NAMES,
-            // then this specific parsing (e.g. "A#" as root of "A#blah") means it's not an app chord.
-            // We can stop checking for this root and related suffix.
             return false;
         }
     }
-    // No root note part of the symbol matched any known note.
     return false;
 };
 
@@ -74,61 +64,82 @@ export const getNotesForChord = (root: NoteValue, appChordKey: string): NoteValu
   if (!appChordData) {
     return [];
   }
+  // Construct a canonical representation for Tonal to get notes, if possible,
+  // or use intervals if Tonal cannot parse the appChordData.name directly as a suffix.
+  // Tonal typically expects common suffixes like "m", "maj7", "7", etc.
   const tonalChordSymbol = `${root}${appChordData.name}`;
   const chordObject = Chord.get(tonalChordSymbol);
+
   let notesToMap: string[] = [];
+
+  // If Tonal successfully parsed our Root+Name combo and gave notes:
   if (!chordObject.empty && chordObject.notes && chordObject.notes.length > 0) {
     notesToMap = chordObject.notes;
+  } 
+  // Fallback: If Tonal didn't parse it (e.g. complex app-specific name), use defined intervals.
+  // This path is crucial if APP_CHORDS.name contains suffices Tonal doesn't recognize directly.
+  else if (appChordData.intervals && appChordData.intervals.length > 0) {
+      notesToMap = appChordData.intervals.map(semitones => {
+          const intervalName = Interval.fromSemitones(semitones);
+          return Note.transpose(root, intervalName);
+      });
   } else {
-    if (appChordData.intervals && appChordData.intervals.length > 0) {
-        notesToMap = appChordData.intervals.map(semitones => {
-            const intervalName = Interval.fromSemitones(semitones);
-            return Note.transpose(root, intervalName);
-        });
-    } else {
-        return [];
-    }
+      return []; // No way to determine notes
   }
+
   const mappedNotes = notesToMap
-    .map(n => mapToAppNote(n))
-    .filter((n): n is NoteValue => n !== null); 
-  return mappedNotes.sort((a, b) => NOTES.indexOf(a) - NOTES.indexOf(b));
+    .map(n => mapToAppNote(n)) // Convert to App's NoteValue format (e.g. A# not Bb)
+    .filter((n): n is NoteValue => n !== null);
+  
+  // Return unique notes, sorted according to the NOTES constant order.
+  return [...new Set(mappedNotes)].sort((a, b) => NOTES.indexOf(a) - NOTES.indexOf(b));
 };
 
 export const findMatchingChordsVoicing = (pickedNotesDetails: PickData[]): IdentifiedChord[] => {
     if (!pickedNotesDetails || pickedNotesDetails.length < 2) return [];
+
+    const uniquePickedNoteValues = [...new Set(pickedNotesDetails.map(p => p.note))];
+    // Sort the unique picked notes according to the NOTES constant for consistent comparisons.
+    const sortedUniquePickedPitchClasses = NOTES.filter(n => uniquePickedNoteValues.includes(n));
+
+    if (sortedUniquePickedPitchClasses.length < 2) return [];
+
     const identifiedChords: IdentifiedChord[] = [];
-    const uniquePickedNoteNames = [...new Set(pickedNotesDetails.map(p => p.note))];
-    for (const potentialRootName of uniquePickedNoteNames) {
-        const rootPicks = pickedNotesDetails.filter(p => p.note === potentialRootName);
-        if (rootPicks.length === 0) continue; 
-        const lowestRootPick = rootPicks.sort((a, b) => a.absolutePitch - b.absolutePitch)[0];
-        const lowestRootPitch = lowestRootPick.absolutePitch;
-        const uniquePicksForIntervalCalculationMap = new Map<NoteValue, PickData>();
-        pickedNotesDetails.forEach(pick => {
-            if (!uniquePicksForIntervalCalculationMap.has(pick.note) || pick.absolutePitch < uniquePicksForIntervalCalculationMap.get(pick.note)!.absolutePitch) {
-                uniquePicksForIntervalCalculationMap.set(pick.note, pick);
-            }
-        });
-        const uniquePicksArray = Array.from(uniquePicksForIntervalCalculationMap.values());
-        const actualIntervals = uniquePicksArray
-            .map(pick => pick.absolutePitch - lowestRootPitch)
-            .sort((a, b) => a - b);
-        for (const [appChordKey, appChordData] of Object.entries(APP_CHORDS as Record<string, ChordDefinition>)) {
-            const definedIntervals = [...appChordData.intervals].sort((a, b) => a - b);
-            if (actualIntervals.length === definedIntervals.length &&
-                actualIntervals.every((interval, index) => interval === definedIntervals[index])) {
+
+    // Iterate through each unique picked note, treating it as a potential root.
+    for (const potentialRoot of sortedUniquePickedPitchClasses) {
+        // Iterate through all defined chords in APP_CHORDS.
+        for (const [appChordKey, appChordDefinition] of Object.entries(APP_CHORDS as Record<string, ChordDefinition>)) {
+            // Get the theoretical notes for this appChordDefinition if its root were 'potentialRoot'.
+            // getNotesForChord returns sorted, unique pitch classes.
+            const theoreticalChordNotes = getNotesForChord(potentialRoot, appChordKey);
+
+            // Check if the set of theoretical notes exactly matches the set of unique picked notes.
+            // Both arrays are sorted according to NOTES constant.
+            if (theoreticalChordNotes.length === sortedUniquePickedPitchClasses.length &&
+                theoreticalChordNotes.every((note, index) => note === sortedUniquePickedPitchClasses[index])) {
+                
                 identifiedChords.push({
-                    name: `${potentialRootName}${appChordData.name}`, 
-                    quality: appChordData.quality,
+                    name: `${potentialRoot}${appChordDefinition.name}`,
+                    quality: appChordDefinition.quality,
                     key: appChordKey,
-                    root: potentialRootName
+                    root: potentialRoot
                 });
             }
         }
     }
-    const uniqueChordStrings = new Set(identifiedChords.map(c => JSON.stringify(c)));
-    return Array.from(uniqueChordStrings).map(s => JSON.parse(s)).sort((a,b) => a.name.localeCompare(b.name));
+
+    // Deduplicate results by chord name. This handles cases where different APP_CHORD entries
+    // might coincidentally produce the same set of notes for a given root (e.g. add2 vs add9).
+    // It also ensures that if multiple roots could form the *same named chord* (less likely), only one is listed.
+    const uniqueByName = new Map<string, IdentifiedChord>();
+    identifiedChords.forEach(chord => {
+        if (!uniqueByName.has(chord.name)) {
+            uniqueByName.set(chord.name, chord);
+        }
+    });
+
+    return Array.from(uniqueByName.values()).sort((a,b) => a.name.localeCompare(b.name));
 };
 
 export const detectChordsWithTonal = (uniqueNotes: NoteValue[]): string[] => {
@@ -150,12 +161,9 @@ export const findPotentialChordsUpdated = (
             const potentialPitchClassesArray: NoteValue[] = [...currentUniqueNotes, noteToAdd];
             const potentialPitchClassesSet = new Set(potentialPitchClassesArray);
 
-            // 1. Get Tonal detected symbols
             const tonalDetectedSymbols = detectChordsWithTonal(potentialPitchClassesArray);
-
-            // 2. Get app-specific chord symbols
-            // These are chords from APP_CHORDS that can be formed by the (current notes + noteToAdd)
             const appSpecificSymbols: string[] = [];
+
             for (const potentialRoot of potentialPitchClassesArray) {
                 for (const [appChordKey, appChordData] of Object.entries(APP_CHORDS as Record<string, ChordDefinition>)) {
                     const appChordNotes = getNotesForChord(potentialRoot, appChordKey);
@@ -168,14 +176,11 @@ export const findPotentialChordsUpdated = (
                 }
             }
             
-            // Combine all detected symbols (app-specific and Tonal), then deduplicate
             const allPossibleSymbols = [...new Set([...appSpecificSymbols, ...tonalDetectedSymbols])];
             
-            // Filter out chords already identified for the current selection (without noteToAdd)
-            // AND filter to only include chords that are defined in APP_CHORDS
             const newlyPossibleChords = allPossibleSymbols
                 .filter(chordSymbol => !identifiedChordsSet.has(chordSymbol)) 
-                .filter(isAppDefinedChordSymbol) // Apply the new filter here
+                .filter(isAppDefinedChordSymbol) 
                 .sort();
 
             if (newlyPossibleChords.length > 0) {
@@ -183,6 +188,5 @@ export const findPotentialChordsUpdated = (
             }
         }
     }
-    // Sort suggestions by the noteToAdd, based on NOTES constant order
     return potentialSuggestionsOutput.sort((a, b) => NOTES.indexOf(a.noteToAdd) - NOTES.indexOf(b.noteToAdd));
 };
