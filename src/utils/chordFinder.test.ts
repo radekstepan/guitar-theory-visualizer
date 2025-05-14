@@ -305,7 +305,7 @@ describe('chordFinder utilities', () => {
       const noteOrder = suggestions.map(s => s.noteToAdd);
       
       // Expected order of these specific notes that actually form chords, sorted by NOTES constant
-      const expectedFormingNotesSorted: NoteValue[] = ['A', 'G', 'G#']
+      const expectedFormingNotesSorted = new Array<NoteValue>('A', 'G', 'G#')
           .sort((a,b) => NOTES.indexOf(a) - NOTES.indexOf(b)); // Correct order: A, G, G#
       
       expect(noteOrder).toEqual(expectedFormingNotesSorted);
