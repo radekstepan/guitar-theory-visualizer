@@ -44,13 +44,14 @@ const Fretboard: React.FC<FretboardProps> = ({
           const fretNumber = i + 1;
           return (
             <div key={`fret-num-${fretNumber}`} className="fret-number w-16 h-4 text-center text-xs text-gray-600 dark:text-gray-300 relative">
-              {fretNumber}
+              {/* Fret markers are now positioned above the number's container */}
               {markerPositions[fretNumber] && (
-                <div className={`absolute left-1/2 transform -translate-x-1/2 -bottom-3 flex ${markerPositions[fretNumber] === 'double' ? 'space-x-1' : ''}`}>
+                <div className={`absolute left-1/2 transform -translate-x-1/2 bottom-5 flex ${markerPositions[fretNumber] === 'double' ? 'space-x-1' : ''}`}>
                   <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full"></div>
                   {markerPositions[fretNumber] === 'double' && <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full"></div>}
                 </div>
               )}
+              {fretNumber}
             </div>
           );
         })}

@@ -73,7 +73,7 @@ const Fret: React.FC<FretProps> = ({
   }
 
   if (mode === 'pick') {
-    cursorClass = 'cursor-pointer hover:bg-opacity-80';
+    cursorClass = 'cursor-pointer hover:bg-opacity-0';
   }
 
   const handleClick = () => {
