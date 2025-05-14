@@ -1,22 +1,14 @@
 module.exports = {
   preset: 'ts-jest',
-  testEnvironment: 'jest-environment-jsdom', // Use jsdom for File, FileReader etc.
+  testEnvironment: 'jest-environment-jsdom', // Though for pure logic, 'node' might be faster. jsdom is fine.
   roots: ['<rootDir>/src'],
   transform: {
     '^.+\\.tsx?$': ['ts-jest', {
-      tsconfig: 'tsconfig.json',
+      tsconfig: 'tsconfig.json', // Ensure this points to your tsconfig
     }]
   },
   collectCoverage: true,
   coverageDirectory: "coverage",
   coverageProvider: "v8",
-  moduleNameMapper: {
-    // If you have module aliases in tsconfig.paths, map them here
-    // e.g., "^@components/(.*)$": "<rootDir>/src/components/$1"
-  },
-  // Ignore PostCSS/CSS files during tests if they cause issues,
-  // though for ynabFormatter.ts tests, this is likely not needed.
-  // moduleNameMapper: {
-  //   '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
-  // },
+  // moduleNameMapper might be needed if you use path aliases in tsconfig.json
 };

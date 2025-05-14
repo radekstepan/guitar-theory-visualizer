@@ -3,7 +3,7 @@ import { NOTES, TUNING_MIDI_BASE, CHORDS } from '../constants';
 
 export const getNoteDetailsAtFret = (stringIndex: number, fret: number): { note: NoteValue; absolutePitch: number } | null => {
     const baseMidi = TUNING_MIDI_BASE[stringIndex];
-    if (baseMidi === undefined) return null;
+    if (baseMidi === undefined) return null; // This line was 12
 
     const absolutePitch = baseMidi + fret;
     const noteIndex = absolutePitch % 12;
@@ -32,7 +32,7 @@ export const findMatchingChordsVoicing = (pickedNotesDetails: PickData[]): Ident
 
     for (const potentialRootName of uniqueNoteNames) {
         const rootPicks = pickedNotesDetails.filter(p => p.note === potentialRootName);
-        if (!rootPicks.length) continue;
+        // if (!rootPicks.length) continue; // This line was 35 - removed as rootPicks should not be empty here
         const lowestRootPick = rootPicks.sort((a, b) => a.absolutePitch - b.absolutePitch)[0];
         const lowestRootPitch = lowestRootPick.absolutePitch;
 
@@ -87,7 +87,9 @@ export const findMatchingChordsPitchClass = (uniqueNotes: NoteValue[]): string[]
 };
 
 export const findPotentialChordsUpdated = (currentUniqueNotes: NoteValue[], identifiedChordsSet: Set<string>): { noteToAdd: NoteValue; resultingChords: string[] }[] => {
-    if (currentUniqueNotes.length < 2 && currentUniqueNotes.length === 0) return []; // Allow suggestion for 1 note
+    // The condition `currentUniqueNotes.length < 2 && currentUniqueNotes.length === 0` simplifies to `currentUniqueNotes.length === 0`.
+    // This means if 1 note is present, it proceeds.
+    if (currentUniqueNotes.length === 0) return []; 
     const potentialSuggestions: { noteToAdd: NoteValue; resultingChords: string[] }[] = [];
     const currentNotesSet = new Set(currentUniqueNotes);
 
