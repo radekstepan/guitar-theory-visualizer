@@ -1,28 +1,31 @@
-// We will import NOTES after it's defined with 'as const' to break the circularity
-// For now, let's prepare for it.
-// Or, the better fix is to define NOTES as 'const' in constants.ts first.
+// src/types.ts
+import { NOTES as AppNotes } from './constants';
 
-// Forward declaration or a more primitive type initially if needed, but the 'as const' approach is cleaner.
-// For now, let's assume constants.ts will export a well-typed NOTES.
-import { NOTES as AppNotes } from './constants'; // Use an alias to avoid conflict if necessary, though not strictly needed here
-
-export type NoteValue = typeof AppNotes[number]; // This will work once NOTES in constants.ts is 'as const'
+export type NoteValue = typeof AppNotes[number];
 
 export interface ScaleDefinition {
-  name: string;
-  intervals: readonly number[]; // Make intervals readonly
+  name: string; // Display name, e.g., "Major", "Dorian"
+  intervals: readonly number[]; // Semitones from its own root, e.g., Dorian [0, 2, 3, 5, 7, 9, 10]
+  // For modes:
+  isMode?: boolean;
+  formula?: string; // e.g., "1 2 ♭3 4 5 6 ♭7"
+  descriptor?: string; // e.g., "Minor-like with natural 6th"
+  parentScaleDegree?: number; // 1 for Ionian, 2 for Dorian, etc. (degree of parent major scale)
+  parentScaleKey?: string; // Key of the parent scale, e.g., 'ionian'
+  commonUsage?: string; // For help section
 }
 
 export interface ChordDefinition {
   name: string;
-  intervals: readonly number[]; // Make intervals readonly
+  intervals: readonly number[];
   quality: string;
 }
 
 // Import SCALES and CHORDS for type derivation if needed, or use Record<string, X>
-import { SCALES, CHORDS } from './constants';
-export type ScalesData = typeof SCALES;
-export type ChordsData = typeof CHORDS;
+// These will be properly typed based on constants.ts definitions
+import { SCALES as AppScales, CHORDS as AppChords } from './constants'; // Use alias to avoid conflict if they were named the same
+export type ScalesData = typeof AppScales;
+export type ChordsData = typeof AppChords;
 
 
 export interface PickData {
@@ -47,3 +50,6 @@ export interface PotentialChordSuggestion {
 export type Mode = 'scale' | 'chord' | 'pick';
 export type ColorThemeOption = 'standard' | 'uniqueNotes';
 export type ThemeMode = 'light' | 'dark';
+
+// For interval display on fretboard
+export type IntervalDisplayType = Record<number, string>; // Maps semitone offset to interval string e.g. {0: "1", 3: "♭3"}

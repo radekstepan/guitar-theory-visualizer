@@ -1,11 +1,16 @@
+// src/App.tsx
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
+// import { Note } from 'tonal'; // Not directly used here, but used in constants.ts helpers
 
 import {
   NoteValue, Mode, ColorThemeOption, ThemeMode, PickData, IdentifiedChord, PotentialChordSuggestion,
-  ScalesData, ChordsData
+  ScalesData, ChordsData, ScaleDefinition
 } from './types';
-import { NOTES, SCALES, CHORDS, STANDARD_TUNING, NUM_FRETS } from './constants';
+import { 
+  NOTES, SCALES, CHORDS, STANDARD_TUNING, NUM_FRETS, 
+  getParentMajorRoot // Removed getRelativeModes as it's used in SelectionInfo directly
+} from './constants';
 import { 
   getNoteDetailsAtFret, 
   findMatchingChordsVoicing, 
@@ -24,30 +29,20 @@ import PickModeAnalysis from './components/PickModeAnalysis';
 const App: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [mode, setInternalMode] = useState<Mode>(() => {
-    const modeParam = searchParams.get('mode') as Mode | null;
-    return modeParam || 'scale';
-  });
-
+  // Core state
+  const [mode, setInternalMode] = useState<Mode>(() => (searchParams.get('mode') as Mode | null) || 'scale');
   const [selectedKey, setInternalSelectedKey] = useState<NoteValue>(() => {
     const keyParam = searchParams.get('key')?.trim() as NoteValue | null;
-    return (keyParam && NOTES.includes(keyParam)) ? keyParam : 'A';
+    return (keyParam && NOTES.includes(keyParam)) ? keyParam : 'C';
   });
-
-  const [selectedScale, setInternalSelectedScale] = useState<string>(() => {
+  const [selectedScaleKey, setInternalSelectedScaleKey] = useState<string>(() => {
     const scaleParam = searchParams.get('scale')?.trim();
-    return (scaleParam && SCALES[scaleParam as keyof ScalesData]) ? scaleParam : 'major';
+    return (scaleParam && SCALES[scaleParam as keyof ScalesData]) ? scaleParam : 'ionian';
   });
-
   const [selectedChordKey, setInternalSelectedChordKey] = useState<string>(() => {
     const chordParam = searchParams.get('chord')?.trim();
-    const currentMode = searchParams.get('mode') as Mode | null;
-    if (currentMode === 'chord') {
-      return (chordParam && CHORDS[chordParam as keyof ChordsData]) ? chordParam : 'major';
-    }
-    return (chordParam && CHORDS[chordParam as keyof ChordsData]) ? chordParam : '';
+    return (chordParam && CHORDS[chordParam as keyof ChordsData]) ? chordParam : 'major';
   });
-  
   const [selectedPicks, setInternalSelectedPicks] = useState<PickData[]>(() => {
     const picksParam = searchParams.get('picks'); 
     const initialPicks: PickData[] = [];
@@ -67,19 +62,98 @@ const App: React.FC = () => {
     return initialPicks;
   });
 
-  const [colorTheme, setColorTheme] = useState<ColorThemeOption>('uniqueNotes'); 
-  
-  const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
-    const storedTheme = typeof window !== 'undefined' ? localStorage.getItem('theme') : null;
-    return (storedTheme === 'light' || storedTheme === 'dark') ? storedTheme : 'light';
-  });
+  // UI/Display State
+  const [colorTheme, setColorTheme] = useState<ColorThemeOption>('uniqueNotes');
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => (localStorage.getItem('theme') as ThemeMode | null) || 'light');
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
+  // Mode specific state
+  const [showParentScaleOverlay, setShowParentScaleOverlay] = useState<boolean>(false);
+  const [showIntervalIndicators, setShowIntervalIndicators] = useState<boolean>(false);
+  
+  // Derived state for modes
+  const currentScaleDefinition = useMemo(() => SCALES[selectedScaleKey] as ScaleDefinition | undefined, [selectedScaleKey]);
+  
+  const parentMajorRoot = useMemo(() => {
+    if (mode === 'scale' && currentScaleDefinition?.isMode && selectedKey) {
+      return getParentMajorRoot(selectedKey, selectedScaleKey);
+    }
+    return null;
+  }, [mode, selectedKey, selectedScaleKey, currentScaleDefinition]);
+
+  const parentScaleNotes = useMemo(() => {
+    if (parentMajorRoot) {
+      return getNotesForScale(parentMajorRoot, "major");
+    }
+    return [];
+  }, [parentMajorRoot]);
+
+  // Pick mode logic (moved up for correct declaration order)
   const [identifiedChords, setIdentifiedChords] = useState<IdentifiedChord[]>([]);
   const [potentialChords, setPotentialChords] = useState<PotentialChordSuggestion[]>([]);
   const [suggestedNotesForDisplay, setSuggestedNotesForDisplay] = useState<readonly NoteValue[]>([]);
-  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const pickedUniqueNotes: readonly NoteValue[] = useMemo(() => {
+      const uniqueNotesMap = new Map<NoteValue, PickData>(); 
+      selectedPicks.forEach(pick => { 
+          if (!uniqueNotesMap.has(pick.note) || pick.absolutePitch < (uniqueNotesMap.get(pick.note) as PickData).absolutePitch) { 
+              uniqueNotesMap.set(pick.note, pick); 
+          } 
+      }); 
+      return [...uniqueNotesMap.values()]
+          .sort((a, b) => NOTES.indexOf(a.note) - NOTES.indexOf(b.note))
+          .map(pick => pick.note); 
+  }, [selectedPicks]);
 
+  useEffect(() => { 
+    if (mode === 'pick') { 
+      const currentChordsObjects = findMatchingChordsVoicing(selectedPicks); 
+      const currentChordsNamesSet = new Set(currentChordsObjects.map(c => c.name)); 
+      setIdentifiedChords(currentChordsObjects); 
+      const potential = findPotentialChordsUpdated(pickedUniqueNotes, currentChordsNamesSet); 
+      setPotentialChords(potential); 
+      setSuggestedNotesForDisplay([...new Set(potential.map(s => s.noteToAdd))]); 
+    } else { 
+      setIdentifiedChords([]); 
+      setPotentialChords([]); 
+      setSuggestedNotesForDisplay([]); 
+    } 
+  }, [selectedPicks, mode, pickedUniqueNotes]);
+  
+  const identifiedChordsQuality = useMemo(() => (mode === 'pick' && identifiedChords.length > 0 ? identifiedChords[0].quality : null), [mode, identifiedChords]);
+
+
+  // Effect for URL sync
   useEffect(() => {
+    if (isInitialLoad) return;
+    const newParams = new URLSearchParams(searchParams); // Start with current to preserve other params
+    newParams.set('mode', mode);
+    newParams.set('key', selectedKey); // Always set key
+
+    if (mode === 'scale') {
+      newParams.set('scale', selectedScaleKey);
+      newParams.delete('chord');
+      newParams.delete('picks');
+    } else if (mode === 'chord') {
+      newParams.set('chord', selectedChordKey);
+      newParams.delete('scale');
+      newParams.delete('picks');
+    } else if (mode === 'pick') {
+      if (selectedPicks.length > 0) {
+        newParams.set('picks', selectedPicks.map(p => `${p.stringIndex}-${p.fretIndex}`).sort().join('_'));
+      } else {
+        newParams.delete('picks');
+      }
+      newParams.delete('scale');
+      newParams.delete('chord');
+    }
+    
+    if (newParams.toString() !== searchParams.toString()) {
+      setSearchParams(newParams, { replace: true });
+    }
+  }, [isInitialLoad, mode, selectedKey, selectedScaleKey, selectedChordKey, selectedPicks, setSearchParams, searchParams]);
+
+  // Effect for loading from URL
+ useEffect(() => {
     const modeParam = searchParams.get('mode') as Mode | null;
     const keyParam = searchParams.get('key')?.trim() as NoteValue | null; 
     const scaleParam = searchParams.get('scale')?.trim(); 
@@ -87,20 +161,19 @@ const App: React.FC = () => {
     const picksParam = searchParams.get('picks');
 
     const newMode = modeParam || 'scale';
-    if (mode !== newMode) setInternalMode(newMode);
+    if (newMode !== mode) setInternalMode(newMode);
 
-    const newKey = (keyParam && NOTES.includes(keyParam)) ? keyParam : 'A';
-    if (selectedKey !== newKey) setInternalSelectedKey(newKey);
-
+    const newKey = (keyParam && NOTES.includes(keyParam)) ? keyParam : 'C';
+    if (newKey !== selectedKey) setInternalSelectedKey(newKey);
+    
     if (newMode === 'scale') {
-      const newScale = (scaleParam && SCALES[scaleParam as keyof ScalesData]) ? scaleParam : 'major';
-      if (selectedScale !== newScale) setInternalSelectedScale(newScale);
+      const newScale = (scaleParam && SCALES[scaleParam as keyof ScalesData]) ? scaleParam : 'ionian';
+      if (newScale !== selectedScaleKey) setInternalSelectedScaleKey(newScale);
     } else if (newMode === 'chord') {
-      const defaultChord = 'major'; 
-      const newChord = (chordParam && CHORDS[chordParam as keyof ChordsData]) ? chordParam : defaultChord;
-      if (selectedChordKey !== newChord) setInternalSelectedChordKey(newChord);
+      const newChord = (chordParam && CHORDS[chordParam as keyof ChordsData]) ? chordParam : 'major';
+      if (newChord !== selectedChordKey) setInternalSelectedChordKey(newChord);
     } else if (newMode === 'pick') {
-      const newPicksFromUrl: PickData[] = [];
+       const newPicksFromUrl: PickData[] = [];
       if (picksParam) {
         picksParam.split('_').forEach(pairStr => {
           const parts = pairStr.split('-');
@@ -114,162 +187,140 @@ const App: React.FC = () => {
           }
         });
       }
-      const currentPicksString = selectedPicks.map(p => `${p.stringIndex}-${p.fretIndex}`).sort().join('_');
-      const urlPicksString = newPicksFromUrl.map(p => `${p.stringIndex}-${p.fretIndex}`).sort().join('_');
-      if (currentPicksString !== urlPicksString) setInternalSelectedPicks(newPicksFromUrl);
+      if (JSON.stringify(newPicksFromUrl) !== JSON.stringify(selectedPicks)) {
+        setInternalSelectedPicks(newPicksFromUrl);
+      }
     }
     setIsInitialLoad(false); 
-  }, [searchParams]); 
+  }, []); 
+
 
   useEffect(() => {
-    if (isInitialLoad) return; 
-    const newParams = new URLSearchParams();
-    newParams.set('mode', mode);
-    if (mode === 'scale') {
-      newParams.set('key', selectedKey);
-      if (selectedScale) newParams.set('scale', selectedScale);
-    } else if (mode === 'chord') {
-      newParams.set('key', selectedKey);
-      if (selectedChordKey && CHORDS[selectedChordKey.trim() as keyof ChordsData]) { 
-        newParams.set('chord', selectedChordKey.trim());
-      } else if (CHORDS['major']) { 
-        newParams.set('chord', 'major');
-      }
-    } else if (mode === 'pick') {
-      if (selectedPicks.length > 0) {
-        const serializedPicks = selectedPicks.map(p => `${p.stringIndex}-${p.fretIndex}`).sort().join('_');
-        newParams.set('picks', serializedPicks);
-      } else {
-        newParams.delete('picks');
-      }
-    }
-
-    const currentParamsString = searchParams.toString();
-    const newParamsString = newParams.toString();
-    if (newParamsString !== currentParamsString) {
-        setSearchParams(newParams, { replace: true });
-    }
-  }, [isInitialLoad, mode, selectedKey, selectedScale, selectedChordKey, selectedPicks, setSearchParams, searchParams]);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      document.documentElement.classList.toggle('dark', themeMode === 'dark');
-      localStorage.setItem('theme', themeMode);
-    }
+    document.documentElement.classList.toggle('dark', themeMode === 'dark');
+    localStorage.setItem('theme', themeMode);
   }, [themeMode]);
 
   const toggleThemeMode = () => setThemeMode(prev => (prev === 'light' ? 'dark' : 'light'));
-  
-  const handleColorThemeChange = (newTheme: ColorThemeOption) => {
-    if (mode !== 'pick') { 
-      setColorTheme(newTheme);
-    }
-  };
+  const handleColorThemeChange = (newTheme: ColorThemeOption) => { if (mode !== 'pick') setColorTheme(newTheme); };
 
   const handleModeChange = useCallback((newMode: Mode) => {
-    const prevMode = mode;
     setInternalMode(newMode);
-    if (newMode === 'scale') {
-      if (!selectedScale || !SCALES[selectedScale as keyof ScalesData]) {
-        setInternalSelectedScale('major');
-      }
-      if (prevMode === 'pick') setInternalSelectedPicks([]);
-    } else if (newMode === 'chord') {
-      if (!selectedChordKey.trim() || !CHORDS[selectedChordKey.trim() as keyof ChordsData]) {
-          setInternalSelectedChordKey('major');
-      }
-      if (prevMode === 'pick') setInternalSelectedPicks([]);
+    // Reset to defaults if current selection is invalid for the new mode
+    if (newMode === 'scale' && (!selectedScaleKey || !SCALES[selectedScaleKey])) {
+      setInternalSelectedScaleKey('ionian');
     }
-  }, [mode, selectedScale, selectedChordKey]);
+    if (newMode === 'chord' && (!selectedChordKey || !CHORDS[selectedChordKey])) {
+      setInternalSelectedChordKey('major');
+    }
+    // Clear picks if not in pick mode
+    if (newMode !== 'pick') {
+      setInternalSelectedPicks([]);
+    }
+    // Reset mode-specific display toggles
+    if (newMode !== 'scale') {
+        setShowParentScaleOverlay(false);
+        setShowIntervalIndicators(false);
+    }
+  }, [selectedScaleKey, selectedChordKey]);
 
   const currentModeNotes: readonly NoteValue[] = useMemo(() => {
-    const cleanSelectedChordKey = selectedChordKey.trim();
     if (!selectedKey || !NOTES.includes(selectedKey)) return [];
-    if (mode === 'scale' && selectedScale && SCALES[selectedScale as keyof ScalesData]) {
-      const scaleTonalName = SCALES[selectedScale as keyof ScalesData].name;
-      return getNotesForScale(selectedKey, scaleTonalName);
-    } else if (mode === 'chord' && cleanSelectedChordKey && CHORDS[cleanSelectedChordKey as keyof ChordsData]) {
-      return getNotesForChord(selectedKey, cleanSelectedChordKey); 
+    if (mode === 'scale' && currentScaleDefinition) {
+      const tonalScaleType = selectedScaleKey; 
+      return getNotesForScale(selectedKey, tonalScaleType === 'major' ? 'major' : tonalScaleType === 'minorNatural' ? 'minor' : tonalScaleType);
+    } else if (mode === 'chord' && selectedChordKey && CHORDS[selectedChordKey]) {
+      return getNotesForChord(selectedKey, selectedChordKey);
     }
     return [];
-  }, [selectedKey, selectedScale, selectedChordKey, mode]);
+  }, [selectedKey, selectedScaleKey, selectedChordKey, mode, currentScaleDefinition]);
 
   const currentSelectionName = useMemo(() => {
-    const currentKeyDisplay = selectedKey && NOTES.includes(selectedKey) ? selectedKey : 'A';
-    const cleanSelectedChordKey = selectedChordKey.trim();
-
-    if (mode === 'scale' && selectedScale && SCALES[selectedScale as keyof ScalesData]) {
-      const displayScaleName = SCALES[selectedScale as keyof ScalesData].name;
-      return `${currentKeyDisplay} ${displayScaleName.charAt(0).toUpperCase() + displayScaleName.slice(1)}`;
+    const keyDisplay = selectedKey || "";
+    if (mode === 'scale' && currentScaleDefinition) {
+      return `${keyDisplay} ${currentScaleDefinition.name}`;
     }
-    if (mode === 'chord' && cleanSelectedChordKey && CHORDS[cleanSelectedChordKey as keyof ChordsData]) {
-      const chordData = CHORDS[cleanSelectedChordKey as keyof ChordsData];
-      return `${currentKeyDisplay}${chordData.name}`; 
+    if (mode === 'chord' && selectedChordKey && CHORDS[selectedChordKey]) {
+      return `${keyDisplay}${CHORDS[selectedChordKey].name}`;
     }
     if (mode === 'pick') {
       const chordsText = identifiedChords.map(c => c.name).join(' / ');
       return `Pick Mode Active ${chordsText ? `- ${chordsText}` : ''}`;
     }
     return 'Select Mode/Key/Scale/Chord';
-  }, [selectedKey, selectedScale, selectedChordKey, mode, identifiedChords]);
+  }, [selectedKey, selectedScaleKey, selectedChordKey, mode, currentScaleDefinition, identifiedChords]);
   
-  const identifiedChordsQuality = useMemo(() => { if (mode === 'pick' && identifiedChords.length > 0) { return identifiedChords[0].quality; } return null; }, [mode, identifiedChords]);
-  const pickedUniqueNotes: readonly NoteValue[] = useMemo(() => { const uniqueNotesMap = new Map<NoteValue, PickData>(); selectedPicks.forEach(pick => { if (!uniqueNotesMap.has(pick.note) || pick.absolutePitch < (uniqueNotesMap.get(pick.note) as PickData).absolutePitch) { uniqueNotesMap.set(pick.note, pick); } }); return [...uniqueNotesMap.values()] .sort((a, b) => NOTES.indexOf(a.note) - NOTES.indexOf(b.note)) .map(pick => pick.note); }, [selectedPicks]);
-  const handleKeyChange = (value: string) => { const trimmedValue = value.trim() as NoteValue; if (NOTES.includes(trimmedValue)) setInternalSelectedKey(trimmedValue); };
-  const handleScaleChange = (value: string) => { const trimmedValue = value.trim(); if (SCALES[trimmedValue as keyof ScalesData]) { setInternalSelectedScale(trimmedValue); } };
-  const handleChordChange = (value: string) => { const trimmedValue = value.trim(); if (CHORDS[trimmedValue as keyof ChordsData]) { setInternalSelectedChordKey(trimmedValue); } };
-  
-  const handleClearPicks = () => setInternalSelectedPicks([]);
-  const handleFretClick = useCallback((pickDataWithDetails: PickData) => { if (mode !== 'pick') return; setInternalSelectedPicks(prevPicks => { const existingPickIndex = prevPicks.findIndex(p => p.stringIndex === pickDataWithDetails.stringIndex && p.fretIndex === pickDataWithDetails.fretIndex); if (existingPickIndex > -1) { return prevPicks.filter((_, index) => index !== existingPickIndex); } else { return [...prevPicks, pickDataWithDetails]; } }); }, [mode]);
-  
-  useEffect(() => { if (mode === 'pick') { const currentChordsObjects = findMatchingChordsVoicing(selectedPicks); const currentChordsNamesSet = new Set(currentChordsObjects.map(c => c.name)); setIdentifiedChords(currentChordsObjects); const potential = findPotentialChordsUpdated(pickedUniqueNotes, currentChordsNamesSet); setPotentialChords(potential); setSuggestedNotesForDisplay([...new Set(potential.map(s => s.noteToAdd))]); } else { setIdentifiedChords([]); setPotentialChords([]); setSuggestedNotesForDisplay([]); } }, [selectedPicks, mode, pickedUniqueNotes]);
-  
-  const highlightedNotesForFretboard = useMemo(() => { if (mode === 'pick') { if (selectedPicks.length <= 1) return NOTES; return []; } return currentModeNotes; }, [mode, selectedPicks.length, currentModeNotes]);
 
-  const effectiveColorTheme = useMemo(() => {
-    return mode === 'pick' ? 'uniqueNotes' : colorTheme;
-  }, [mode, colorTheme]);
+  const handleKeyChange = (value: string) => { if (NOTES.includes(value as NoteValue)) setInternalSelectedKey(value as NoteValue); };
+  const handleScaleChange = (value: string) => { if (SCALES[value]) setInternalSelectedScaleKey(value); };
+  const handleChordChange = (value: string) => { if (CHORDS[value]) setInternalSelectedChordKey(value); };
+  const handleClearPicks = () => setInternalSelectedPicks([]);
+  const handleFretClick = useCallback((pickDataWithDetails: PickData) => { 
+      if (mode !== 'pick') return; 
+      setInternalSelectedPicks(prevPicks => { 
+          const existingPickIndex = prevPicks.findIndex(p => p.stringIndex === pickDataWithDetails.stringIndex && p.fretIndex === pickDataWithDetails.fretIndex); 
+          if (existingPickIndex > -1) { 
+              return prevPicks.filter((_, index) => index !== existingPickIndex); 
+          } else { 
+              return [...prevPicks, pickDataWithDetails]; 
+          } 
+      }); 
+  }, [mode]);
+
+  const handleSelectRelativeMode = (newKey: NoteValue, newScaleKey: string) => {
+    setInternalSelectedKey(newKey);
+    setInternalSelectedScaleKey(newScaleKey);
+  };
+
+  const highlightedNotesForFretboard = useMemo(() => {
+    if (mode === 'pick') return selectedPicks.length <= 1 ? NOTES : [];
+    return currentModeNotes;
+  }, [mode, selectedPicks.length, currentModeNotes]);
+
+  const effectiveColorTheme = mode === 'pick' ? 'uniqueNotes' : colorTheme;
+  const modeRootToPass = mode === 'scale' || mode === 'chord' ? selectedKey : null;
 
   return (
     <div className="container mx-auto p-4 font-sans text-gray-900 dark:text-gray-100 min-h-screen">
-      <AppHeader 
-        themeMode={themeMode} 
-        toggleThemeMode={toggleThemeMode}
-        colorTheme={colorTheme} 
-        onColorThemeChange={handleColorThemeChange} 
-        currentAppMode={mode} 
+      <AppHeader
+        themeMode={themeMode} toggleThemeMode={toggleThemeMode}
+        colorTheme={colorTheme} onColorThemeChange={handleColorThemeChange}
+        currentAppMode={mode}
       />
       <ModeSelection currentMode={mode} onSetMode={handleModeChange} />
       <Controls
         mode={mode}
-        selectedKey={selectedKey}
-        onKeyChange={handleKeyChange}
-        selectedScale={selectedScale}
-        onScaleChange={handleScaleChange}
-        selectedChordKey={selectedChordKey.trim()}
-        onChordChange={handleChordChange}
+        selectedKey={selectedKey} onKeyChange={handleKeyChange}
+        selectedScaleKey={selectedScaleKey} onScaleChange={handleScaleChange}
+        selectedChordKey={selectedChordKey} onChordChange={handleChordChange}
+        showParentScaleOverlay={showParentScaleOverlay} onShowParentScaleOverlayChange={setShowParentScaleOverlay}
+        showIntervalIndicators={showIntervalIndicators} onShowIntervalIndicatorsChange={setShowIntervalIndicators}
       />
       <SelectionInfo
         mode={mode}
         currentSelectionName={currentSelectionName}
+        selectedKey={selectedKey}
+        selectedScaleKey={selectedScaleKey}
         pickedUniqueNotes={pickedUniqueNotes}
         currentModeNotes={currentModeNotes}
-        selectedChordKey={selectedChordKey.trim()}
-        colorTheme={effectiveColorTheme} 
+        selectedChordKey={selectedChordKey}
+        colorTheme={effectiveColorTheme}
         identifiedChordsQuality={identifiedChordsQuality}
+        onSelectRelativeMode={handleSelectRelativeMode}
       />
       <div className="flex justify-center my-4">
         <Fretboard
-          tuning={STANDARD_TUNING}
-          numFrets={NUM_FRETS}
+          tuning={STANDARD_TUNING} numFrets={NUM_FRETS}
           highlightedNotes={highlightedNotesForFretboard}
-          rootNote={mode === 'pick' ? null : selectedKey}
-          selectedPicks={selectedPicks}
-          selectedPicksCount={selectedPicks.length}
-          mode={mode}
-          colorTheme={effectiveColorTheme} 
+          selectedPicks={selectedPicks} selectedPicksCount={selectedPicks.length}
+          mode={mode} colorTheme={effectiveColorTheme}
           onFretClick={handleFretClick}
           suggestedNotesForDisplay={selectedPicks.length > 1 ? suggestedNotesForDisplay : []}
+          currentScaleDef={currentScaleDefinition}
+          modeRootNote={modeRootToPass}
+          parentScaleRootNote={parentMajorRoot}
+          showParentScaleOverlay={showParentScaleOverlay}
+          parentScaleNotes={parentScaleNotes}
+          showIntervalIndicators={showIntervalIndicators}
         />
       </div>
       {mode === 'pick' && (
